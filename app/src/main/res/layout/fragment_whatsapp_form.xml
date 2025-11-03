@@ -11,6 +11,14 @@
         android:layout_height="wrap_content"
         android:paddingBottom="16dp">
 
+        <WebView
+            android:id="@+id/scraping_webview"
+            android:layout_width="1px"
+            android:layout_height="1px"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/associate_link_layout"
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
