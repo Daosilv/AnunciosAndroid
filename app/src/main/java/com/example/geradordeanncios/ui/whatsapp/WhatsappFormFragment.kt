@@ -73,6 +73,12 @@ class WhatsappFormFragment : Fragment() {
     private val handler = Handler(Looper.getMainLooper())
     private var searchRunnable: Runnable? = null
     private var isFetching = false
+    private var lastCheckedExclusivityId: Int = -1
+    private var lastCheckedShippingId: Int = -1
+    private var lastCheckedFromPriceId: Int = -1
+    private var lastCheckedCouponLinkId: Int = -1
+    private var lastCheckedGroupLinkId: Int = -1
+    private var lastCheckedPaymentDiscountId: Int = -1
 
     private var couponLink = "https://s.shopee.com.br/1g76ck3c1x"
     private var groupLink = "https://chat.whatsapp.com/LyGtLhQqxWbDqjiklHldOm"
@@ -125,6 +131,77 @@ class WhatsappFormFragment : Fragment() {
         binding.clearButton.setOnClickListener { clearAllFields() }
         binding.copyAdButton.setOnClickListener { copyAdToClipboard() }
         setupUrlAutoFill()
+        setupToggleableRadioButtons()
+    }
+
+    private fun setupToggleableRadioButtons() {
+        // Exclusividade
+        setupToggleGroup(
+            listOf(binding.primeRadio, binding.meliPlusRadio, binding.exclusiveRadio),
+            binding.exclusivityGroup
+        ) { lastCheckedExclusivityId = it }
+        
+        // Opções de Frete
+        setupToggleGroup(
+            listOf(binding.freeShippingRadio, binding.couponShippingRadio, binding.freeShippingAboveRadio),
+            binding.shippingOptionsGroup
+        ) { lastCheckedShippingId = it }
+        
+        // A partir de (RadioButton individual)
+        binding.fromPriceCheckbox.setOnClickListener {
+            if (lastCheckedFromPriceId == binding.fromPriceCheckbox.id && binding.fromPriceCheckbox.isChecked) {
+                binding.fromPriceCheckbox.isChecked = false
+                lastCheckedFromPriceId = -1
+            } else {
+                lastCheckedFromPriceId = binding.fromPriceCheckbox.id
+            }
+        }
+        
+        // Link de Cupons (RadioButton individual)
+        binding.couponLinkCheckbox.setOnClickListener {
+            if (lastCheckedCouponLinkId == binding.couponLinkCheckbox.id && binding.couponLinkCheckbox.isChecked) {
+                binding.couponLinkCheckbox.isChecked = false
+                lastCheckedCouponLinkId = -1
+            } else {
+                lastCheckedCouponLinkId = binding.couponLinkCheckbox.id
+            }
+        }
+        
+        // Link do Grupo (RadioButton individual)
+        binding.groupLinkCheckbox.setOnClickListener {
+            if (lastCheckedGroupLinkId == binding.groupLinkCheckbox.id && binding.groupLinkCheckbox.isChecked) {
+                binding.groupLinkCheckbox.isChecked = false
+                lastCheckedGroupLinkId = -1
+            } else {
+                lastCheckedGroupLinkId = binding.groupLinkCheckbox.id
+            }
+        }
+        
+        // Checkbox de desconto na tela de pagamento
+        binding.paymentScreenDiscountCheckbox.setOnClickListener {
+            if (lastCheckedPaymentDiscountId == binding.paymentScreenDiscountCheckbox.id && binding.paymentScreenDiscountCheckbox.isChecked) {
+                binding.paymentScreenDiscountCheckbox.isChecked = false
+                lastCheckedPaymentDiscountId = -1
+            } else {
+                lastCheckedPaymentDiscountId = binding.paymentScreenDiscountCheckbox.id
+            }
+        }
+    }
+    
+    private fun setupToggleGroup(radioButtons: List<android.widget.RadioButton>, radioGroup: android.widget.RadioGroup, updateLastChecked: (Int) -> Unit) {
+        var lastCheckedId = -1
+        radioButtons.forEach { radioButton ->
+            radioButton.setOnClickListener {
+                if (lastCheckedId == radioButton.id) {
+                    radioGroup.clearCheck()
+                    lastCheckedId = -1
+                    updateLastChecked(-1)
+                } else {
+                    lastCheckedId = radioButton.id
+                    updateLastChecked(radioButton.id)
+                }
+            }
+        }
     }
 
     private fun setupUrlAutoFill() {
@@ -300,6 +377,18 @@ class WhatsappFormFragment : Fragment() {
         binding.fromPriceCheckbox.isChecked = false
         binding.couponEditText.text?.clear()
         binding.paymentScreenDiscountCheckbox.isChecked = false
+        binding.shippingOptionsGroup.clearCheck()
+        binding.freeShippingAboveEditText.text?.clear()
+        binding.couponLinkCheckbox.isChecked = false
+        binding.groupLinkCheckbox.isChecked = false
+        
+        // Resetar todos os controles de radio button e checkbox
+        lastCheckedExclusivityId = -1
+        lastCheckedShippingId = -1
+        lastCheckedFromPriceId = -1
+        lastCheckedCouponLinkId = -1
+        lastCheckedGroupLinkId = -1
+        lastCheckedPaymentDiscountId = -1
     }
     private fun copyAdToClipboard() {
          val adText = buildString { 
