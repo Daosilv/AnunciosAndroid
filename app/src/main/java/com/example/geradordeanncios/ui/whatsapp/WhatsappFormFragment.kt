@@ -1,6 +1,6 @@
+
 package com.example.geradordeanncios.ui.whatsapp
 
-import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -8,32 +8,90 @@ import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.Message
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.WebChromeClient
-import android.webkit.WebView
 import android.widget.EditText
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.example.geradordeanncios.R
 import com.example.geradordeanncios.databinding.FragmentWhatsappFormBinding
-import org.json.JSONObject
-import org.jsoup.Jsoup
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import kotlinx.coroutines.launch
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import java.security.MessageDigest
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+
+
+@Serializable
+data class ShopeeResponse(
+    val data: ShopeeData?
+)
+
+@Serializable
+data class ShopeeData(
+    @SerialName("productOfferV2")
+    val productOffer: ProductOffer
+)
+
+@Serializable
+data class ProductOffer(
+    val nodes: List<ProductNode>?
+)
+
+@Serializable
+data class ProductNode(
+    val productName: String,
+    val price: String? = null,
+    val priceMin: String? = null,
+    val commissionRate: String? = null,
+    val commission: String? = null,
+    val imageUrl: String? = null,
+    val productLink: String? = null,
+    val offerLink: String? = null
+)
 
 class WhatsappFormFragment : Fragment() {
 
     private var _binding: FragmentWhatsappFormBinding? = null
     private val binding get() = _binding!!
 
+    private val handler = Handler(Looper.getMainLooper())
+    private var searchRunnable: Runnable? = null
+    private var isFetching = false
+
     private var couponLink = "https://s.shopee.com.br/1g76ck3c1x"
     private var groupLink = "https://chat.whatsapp.com/LyGtLhQqxWbDqjiklHldOm"
-    private val handler = Handler(Looper.getMainLooper())
-    private var extractionRunnable: Runnable? = null
+
+    private val client = HttpClient(CIO) {
+        followRedirects = true
+        install(ContentNegotiation) {
+            json(Json {
+                ignoreUnknownKeys = true
+                isLenient = true
+            })
+        }
+    }
+    companion object {
+        // Credentials
+        private const val APP_ID = "18344110677"
+        private const val SECRET = "BEWYLTPASZH2TJXVMQUQVGU3YBSYX64T"
+        private const val API_URL = "https://open-api.affiliate.shopee.com.br/graphql"
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -46,8 +104,10 @@ class WhatsappFormFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        // setupUrlAutoFill()
+        setupListeners()
+    }
 
+    private fun setupListeners() {
         binding.editCouponLinkButton.setOnClickListener {
             showEditLinkDialog("Editar Link de Cupons", couponLink) { newLink ->
                 couponLink = newLink
@@ -62,22 +122,19 @@ class WhatsappFormFragment : Fragment() {
             }
         }
 
-        binding.clearButton.setOnClickListener {
-            clearAllFields()
-        }
-
-        binding.copyAdButton.setOnClickListener {
-            copyAdToClipboard()
-        }
+        binding.clearButton.setOnClickListener { clearAllFields() }
+        binding.copyAdButton.setOnClickListener { copyAdToClipboard() }
+        setupUrlAutoFill()
     }
 
     private fun setupUrlAutoFill() {
         binding.associateLinkEditText.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
+                searchRunnable?.let { handler.removeCallbacks(it) }
                 val url = s.toString().trim()
-                // A verificação de foco é crucial para evitar loops infinitos!
-                if (url.startsWith("http") && binding.associateLinkEditText.isFocused) {
-                    fetchProductDetailsWithWebView(url)
+                if (url.contains("shopee.com.br") && binding.associateLinkEditText.isFocused && !isFetching) {
+                    searchRunnable = Runnable { fetchProductDetails(url) }
+                    handler.postDelayed(searchRunnable!!, 800)
                 }
             }
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -85,121 +142,141 @@ class WhatsappFormFragment : Fragment() {
         })
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun fetchProductDetailsWithWebView(url: String) {
-        val TAG = "ScrapingDebug"
-        Log.d(TAG, "Iniciando busca com WebView para: $url")
+    private fun fetchProductDetails(url: String) {
+        if (isFetching) return
+        isFetching = true
 
-        extractionRunnable?.let { handler.removeCallbacks(it) }
-
-        val webView = binding.scrapingWebview
-
-        // --- Configurações de Camuflagem Avançada ---
-        webView.settings.javaScriptEnabled = true
-        webView.settings.domStorageEnabled = true
-        webView.settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
-        webView.settings.blockNetworkImage = true
-        webView.settings.javaScriptCanOpenWindowsAutomatically = false
-        webView.settings.setSupportMultipleWindows(false)
-
-        // Essencial: Bloqueia pop-ups e novas janelas
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean {
-                Log.w(TAG, "Pedido de nova janela (popup) bloqueado.")
-                // De forma crucial, não fazemos nada com a mensagem, efetivamente bloqueando o pop-up.
-                return false // Impede a criação de novas janelas
-            }
-        }
-
-        extractionRunnable = Runnable {
-            Log.d(TAG, "Tempo de espera finalizado. Tentando extrair HTML agora.")
-            webView.evaluateJavascript("(function() { return document.documentElement.outerHTML; })();") { html ->
-                if (html != null && html.length > 2) { // Verifica se o html não é nulo ou \"null\"
-                    val decodedHtml = android.text.Html.fromHtml(html, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
-                    parseHtmlWithJsoup(decodedHtml)
-                } else {
-                    Log.e(TAG, "Falha ao obter HTML do WebView, resultado nulo ou vazio.")
-                    activity?.runOnUiThread {
-                        Toast.makeText(context, "Falha ao obter dados da página.", Toast.LENGTH_SHORT).show()
-                    }
+        lifecycleScope.launch {
+            try {
+                var finalUrl = url
+                if (url.contains("s.shopee.com.br")) {
+                    val response: HttpResponse = client.get(url)
+                    finalUrl = response.request.url.toString()
+                    Log.d("ShopeeAPI", "Link resolvido: $finalUrl")
                 }
-                webView.stopLoading()
+
+                val (shopId, itemId) = extractIds(finalUrl)
+                if (shopId == null || itemId == null) {
+                    Log.w("ShopeeAPI", "IDs não encontrados na URL: $finalUrl")
+                    Toast.makeText(requireContext(), "❌ IDs não encontrados no link.", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                Log.d("ShopeeAPI", "Tentando API - ShopID: $shopId, ItemID: $itemId")
+
+                val timestamp = System.currentTimeMillis() / 1000
+
+                // GraphQL query conforme especificação da Shopee - buscar produto específico
+                val query = "{ productOfferV2(listType: 0, sortType: 5, productCatId:101803, limit:1,isAMSOffer: true) { nodes { commissionRate commission imageUrl price productLink offerLink productName } }}"
+
+                val payload = buildJsonObject { put("query", query) }.toString()
+                
+                Log.d("ShopeeAPI", "Timestamp: $timestamp")
+                Log.d("ShopeeAPI", "Payload: $payload")
+                
+                val signature = generateSignature(timestamp, payload)
+                
+                Log.d("ShopeeAPI", "Signature gerada: $signature")
+
+                val response = client.post(API_URL) {
+                    contentType(ContentType.Application.Json)
+                    header("Authorization", "SHA256 Credential=$APP_ID, Timestamp=$timestamp, Signature=$signature")
+                    setBody(payload)
+                }
+
+                val responseText = response.bodyAsText()
+                Log.d("ShopeeAPI", "Resposta API: $responseText")
+
+                if (responseText.contains("errors")) {
+                    val errorMessage = responseText.substringAfter("message\":\"").substringBefore("\"")
+                    Log.e("ShopeeAPI", "Erro da API: $errorMessage")
+                    Toast.makeText(requireContext(), "❌ Erro da API: $errorMessage", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                val shopeeResponse = Json { ignoreUnknownKeys = true }.decodeFromString<ShopeeResponse>(responseText)
+                val product = shopeeResponse.data?.productOffer?.nodes?.firstOrNull()
+
+                if (product != null) {
+                    Log.d("ShopeeAPI", "Produto encontrado via API: ${product.productName}")
+                    binding.adTitleEditText.setText(product.productName)
+                    
+                    // Usar price ou priceMin, o que estiver disponível
+                    val priceValue = product.price ?: product.priceMin
+                    if (priceValue != null) {
+                        binding.priceEditText.setText(formatPrice(priceValue))
+                    }
+                    
+                    Toast.makeText(requireContext(), "✅ Produto encontrado via API!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Log.w("ShopeeAPI", "API retornou sucesso, mas sem dados do produto.")
+                    Toast.makeText(requireContext(), "❌ Produto não encontrado na API.", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e("ShopeeAPI", "Exceção ao tentar API: ${e.message}", e)
+                Toast.makeText(requireContext(), "❌ Falha na conexão com a API.", Toast.LENGTH_SHORT).show()
+            } finally {
+                isFetching = false
             }
         }
-
-        webView.loadUrl(url)
-        Log.d(TAG, "URL carregada no WebView. Aguardando 10 segundos...")
-        handler.postDelayed(extractionRunnable!!, 10000)
     }
 
-    private fun parseHtmlWithJsoup(html: String) {
-        val TAG = "ScrapingDebug"
-        Log.d(TAG, "Iniciando parse do HTML com Jsoup.")
-        var title = ""
-        var price = ""
-        try {
-            val doc = Jsoup.parse(html)
-
-            val scriptElements = doc.select("script[type=application/ld+json]")
-            Log.d(TAG, "Encontrados ${scriptElements.size} elementos de script JSON-LD.")
-            for (element in scriptElements) {
-                val json = element.data()
-                if (json.contains("\"@type\":\"Product\"")) {
-                    val jsonObj = JSONObject(json)
-                    title = jsonObj.optString("name", "")
-                    val offers = jsonObj.optJSONObject("offers")
-                    price = offers?.optString("price") ?: offers?.optJSONArray("offers")?.optJSONObject(0)?.optString("price") ?: ""
-                    if (title.isNotBlank()) {
-                        Log.d(TAG, "Título e preço encontrados no JSON-LD.")
-                        break
-                    }
-                }
+    private fun extractIds(url: String): Pair<String?, String?> {
+        // Corrected Regex to handle paths like /opaanlp/shopId/itemId
+        Regex(".*?/(\\d+)/(\\d+)").find(url)?.let {
+            if (it.groupValues.size == 3) {
+                val shopId = it.groupValues[1]
+                val itemId = it.groupValues[2]
+                return Pair(shopId, itemId)
             }
-
-            if (title.isBlank()) {
-                 Log.d(TAG, "Título não encontrado no JSON-LD, tentando meta tags.")
-                title = doc.selectFirst("meta[property=og:title]")?.attr("content") ?: ""
-            }
-            if (price.isBlank()) {
-                 Log.d(TAG, "Preço não encontrado no JSON-LD, tentando meta tags.")
-                price = doc.selectFirst("meta[property=product:price:amount]")?.attr("content") ?: doc.selectFirst("meta[property=og:price:amount]")?.attr("content") ?: ""
-            }
-
-            val cleanedPrice = price.replace(Regex("[^0-9,.]"), "")
-
-            activity?.runOnUiThread {
-                Log.d(TAG, "Atualizando UI com Título='$title', Preço='$cleanedPrice'")
-                if (title.isNotBlank() || cleanedPrice.isNotBlank()) {
-                    binding.adTitleEditText.setText(title)
-                    binding.priceEditText.setText(cleanedPrice)
-                } else {
-                    Log.w(TAG, "Nenhum título ou preço encontrado no HTML final.")
-                    Toast.makeText(context, "Não foi possível extrair dados do link.", Toast.LENGTH_SHORT).show()
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Erro ao fazer parse do HTML com Jsoup", e)
         }
+        // Handles formats like i.shopId.itemId
+        Regex(".*i\\.(\\d+)\\.(\\d+)").find(url)?.let {
+            if (it.groupValues.size == 3) {
+                val shopId = it.groupValues[1]
+                val itemId = it.groupValues[2]
+                return Pair(shopId, itemId)
+            }
+        }
+        // Handles formats like ?item_id=...&shop_id=...
+        Regex(".*item_id=(\\d+).*shop_id=(\\d+)").find(url)?.let {
+            if (it.groupValues.size == 3) {
+                val itemId = it.groupValues[1]
+                val shopId = it.groupValues[2]
+                return Pair(shopId, itemId)
+            }
+        }
+        return Pair(null, null)
+    }
+
+    private fun generateSignature(timestamp: Long, payload: String): String {
+        // Conforme documentação: AppId + Timestamp + Payload + Secret
+        val factor = "$APP_ID$timestamp$payload$SECRET"
+        
+        // Usar SHA256 simples (não HMAC)
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(factor.toByteArray(Charsets.UTF_8))
+        
+        // Converter para hexadecimal
+        return hashBytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun formatPrice(price: String): String {
+        return price // Basic formatting, can be improved
     }
 
     private fun showEditLinkDialog(title: String, currentLink: String, onSave: (String) -> Unit) {
-        val builder = AlertDialog.Builder(requireContext())
-        builder.setTitle(title)
-
-        val input = EditText(requireContext())
-        input.setText(currentLink)
-        builder.setView(input)
-
-        builder.setPositiveButton("Salvar") { dialog, _ ->
-            val newLink = input.text.toString()
-            onSave(newLink)
-            dialog.dismiss()
+        AlertDialog.Builder(requireContext()).apply {
+            setTitle(title)
+            val input = EditText(requireContext()).apply { setText(currentLink) }
+            setView(input)
+            setPositiveButton("Salvar") { dialog, _ ->
+                onSave(input.text.toString())
+                dialog.dismiss()
+            }
+            setNegativeButton("Cancelar") { dialog, _ -> dialog.cancel() }
+            show()
         }
-        builder.setNegativeButton("Cancelar") { dialog, _ ->
-            dialog.cancel()
-        }
-
-        builder.show()
     }
 
     private fun clearAllFields() {
@@ -211,15 +288,9 @@ class WhatsappFormFragment : Fragment() {
         binding.fromPriceCheckbox.isChecked = false
         binding.couponEditText.text?.clear()
         binding.paymentScreenDiscountCheckbox.isChecked = false
-        binding.shippingOptionsGroup.clearCheck()
-        binding.freeShippingAboveEditText.text?.clear()
-        binding.couponLinkCheckbox.isChecked = false
-        binding.groupLinkCheckbox.isChecked = false
-        Toast.makeText(requireContext(), "Campos limpos!", Toast.LENGTH_SHORT).show()
     }
-
     private fun copyAdToClipboard() {
-        val adText = buildString {
+         val adText = buildString { 
             val adTitle = binding.adTitleEditText.text.toString().trim()
             if (adTitle.isNotBlank()) {
                 appendLine(adTitle)
@@ -250,19 +321,6 @@ class WhatsappFormFragment : Fragment() {
                 if (binding.paymentScreenDiscountCheckbox.isChecked) {
                     appendLine("*(O desconto entra apenas na tela de pagamento)*")
                 }
-                appendLine()
-            }
-            val shippingText = when (binding.shippingOptionsGroup.checkedRadioButtonId) {
-                R.id.free_shipping_radio -> "🚚 Frete Grátis!"
-                R.id.coupon_shipping_radio -> "🚚 Frete Grátis com Cupom!"
-                R.id.free_shipping_above_radio -> {
-                    val amount = binding.freeShippingAboveEditText.text.toString().trim()
-                    if (amount.isNotEmpty()) "🚚 Frete Grátis acima de R$ $amount" else ""
-                }
-                else -> ""
-            }
-            if (shippingText.isNotEmpty()) {
-                appendLine(shippingText)
                 appendLine()
             }
             val purchaseLink = binding.associateLinkEditText.text.toString().trim()
@@ -297,7 +355,8 @@ class WhatsappFormFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        extractionRunnable?.let { handler.removeCallbacks(it) }
-        _binding = null // O webview agora é parte do binding, seu ciclo de vida é gerenciado com o fragmento
+        searchRunnable?.let { handler.removeCallbacks(it) }
+        _binding = null
+        client.close()
     }
 }
