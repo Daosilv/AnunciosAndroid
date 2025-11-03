@@ -69,6 +69,8 @@ application/json
         {
           "productName": "Nome do Produto",
           "price": "99.90",
+          "priceMin": "89.90",
+          "priceMax": "99.90",
           "commissionRate": "0.05",
           "commission": "4.99",
           "imageUrl": "https://...",
@@ -116,6 +118,7 @@ data class ProductNode(
     val productName: String,
     val price: String? = null,
     val priceMin: String? = null,
+    val priceMax: String? = null,
     val commissionRate: String? = null,
     val commission: String? = null,
     val imageUrl: String? = null,
@@ -124,8 +127,17 @@ data class ProductNode(
 )
 ```
 
-## Tratamento de Shortlinks
+## Funcionalidades Automáticas
 
+### 1. Checkbox "A partir de"
+O sistema marca automaticamente o checkbox "A partir de" quando:
+- `priceMin < priceMax`
+
+**Exemplo:**
+- Se `priceMin = 89.90` e `priceMax = 99.90` → Checkbox **marcado**
+- Se `priceMin = 99.90` e `priceMax = 99.90` → Checkbox **desmarcado**
+
+### 2. Tratamento de Shortlinks
 O sistema resolve automaticamente shortlinks do formato `https://s.shopee.com.br/xxxxx` seguindo os redirects para obter a URL completa com `shopId` e `itemId`.
 
 ## Logs de Debug

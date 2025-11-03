@@ -58,6 +58,7 @@ data class ProductNode(
     val productName: String,
     val price: String? = null,
     val priceMin: String? = null,
+    val priceMax: String? = null,
     val commissionRate: String? = null,
     val commission: String? = null,
     val imageUrl: String? = null,
@@ -244,7 +245,7 @@ class WhatsappFormFragment : Fragment() {
                 val timestamp = System.currentTimeMillis() / 1000
 
                 // GraphQL query para buscar produto específico usando shopId e itemId
-                val query = "{ productOfferV2(shopId: $shopId, itemId: $itemId) { nodes { commissionRate commission imageUrl price productLink offerLink productName } }}"
+                val query = "{ productOfferV2(shopId: $shopId, itemId: $itemId) { nodes { commissionRate commission imageUrl price priceMin priceMax productLink offerLink productName } }}"
 
                 val payload = buildJsonObject { put("query", query) }.toString()
                 
@@ -278,10 +279,24 @@ class WhatsappFormFragment : Fragment() {
                     Log.d("ShopeeAPI", "Produto encontrado via API: ${product.productName}")
                     binding.adTitleEditText.setText(product.productName)
                     
-                    // Usar price ou priceMin, o que estiver disponível
-                    val priceValue = product.price ?: product.priceMin
+                    // Usar priceMin como padrão, depois price
+                    val priceValue = product.priceMin ?: product.price
                     if (priceValue != null) {
                         binding.priceEditText.setText(formatPrice(priceValue))
+                    }
+                    
+                    // Marcar "A partir de" automaticamente se priceMin < priceMax
+                    val priceMin = product.priceMin?.toDoubleOrNull()
+                    val priceMax = product.priceMax?.toDoubleOrNull()
+                    
+                    if (priceMin != null && priceMax != null && priceMin < priceMax) {
+                        binding.fromPriceCheckbox.isChecked = true
+                        lastCheckedFromPriceId = binding.fromPriceCheckbox.id
+                        Log.d("ShopeeAPI", "Checkbox 'A partir de' marcado: priceMin=$priceMin < priceMax=$priceMax")
+                    } else {
+                        binding.fromPriceCheckbox.isChecked = false
+                        lastCheckedFromPriceId = -1
+                        Log.d("ShopeeAPI", "Checkbox 'A partir de' desmarcado: priceMin=$priceMin, priceMax=$priceMax")
                     }
                     
                     Toast.makeText(requireContext(), "✅ Produto encontrado via API!", Toast.LENGTH_SHORT).show()
