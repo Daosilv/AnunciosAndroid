@@ -166,8 +166,8 @@ class WhatsappFormFragment : Fragment() {
 
                 val timestamp = System.currentTimeMillis() / 1000
 
-                // GraphQL query conforme especificação da Shopee - buscar produto específico
-                val query = "{ productOfferV2(listType: 0, sortType: 5, productCatId:101803, limit:1,isAMSOffer: true) { nodes { commissionRate commission imageUrl price productLink offerLink productName } }}"
+                // GraphQL query para buscar produto específico usando shopId e itemId
+                val query = "{ productOfferV2(shopId: $shopId, itemId: $itemId) { nodes { commissionRate commission imageUrl price productLink offerLink productName } }}"
 
                 val payload = buildJsonObject { put("query", query) }.toString()
                 
@@ -262,7 +262,19 @@ class WhatsappFormFragment : Fragment() {
     }
 
     private fun formatPrice(price: String): String {
-        return price // Basic formatting, can be improved
+        return try {
+            // A API da Shopee retorna o preço em formato decimal com ponto (ex: "679.42")
+            // Converter para formato brasileiro com vírgula (ex: "679,42")
+            val priceValue = price.toDoubleOrNull()
+            if (priceValue != null) {
+                // Formatar com 2 casas decimais e vírgula
+                String.format("%.2f", priceValue).replace('.', ',')
+            } else {
+                price.replace('.', ',')
+            }
+        } catch (e: Exception) {
+            price.replace('.', ',')
+        }
     }
 
     private fun showEditLinkDialog(title: String, currentLink: String, onSave: (String) -> Unit) {
