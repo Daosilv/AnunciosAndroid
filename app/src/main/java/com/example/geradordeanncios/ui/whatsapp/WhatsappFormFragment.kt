@@ -1,10 +1,15 @@
-
 package com.example.geradordeanncios.ui.whatsapp
 
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.provider.MediaStore
+import java.io.ByteArrayOutputStream
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -14,6 +19,7 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebView
 import android.widget.EditText
 import android.widget.Toast
 import androidx.fragment.app.Fragment
@@ -30,12 +36,14 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import java.security.MessageDigest
+import java.security.InvalidKeyException
+import java.security.NoSuchAlgorithmException
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-
 
 @Serializable
 data class ShopeeResponse(
@@ -83,6 +91,7 @@ class WhatsappFormFragment : Fragment() {
 
     private var couponLink = "https://s.shopee.com.br/1g76ck3c1x"
     private var groupLink = "https://chat.whatsapp.com/LyGtLhQqxWbDqjiklHldOm"
+    private var currentImageUrl: String? = null
 
     private val client = HttpClient(CIO) {
         followRedirects = true
@@ -93,8 +102,8 @@ class WhatsappFormFragment : Fragment() {
             })
         }
     }
+    
     companion object {
-        // Credentials
         private const val APP_ID = "18344110677"
         private const val SECRET = "BEWYLTPASZH2TJXVMQUQVGU3YBSYX64T"
         private const val API_URL = "https://open-api.affiliate.shopee.com.br/graphql"
@@ -136,55 +145,49 @@ class WhatsappFormFragment : Fragment() {
     }
 
     private fun setupToggleableRadioButtons() {
-        // Exclusividade
         setupToggleGroup(
             listOf(binding.primeRadio, binding.meliPlusRadio, binding.exclusiveRadio),
             binding.exclusivityGroup
         ) { lastCheckedExclusivityId = it }
         
-        // Opções de Frete
         setupToggleGroup(
             listOf(binding.freeShippingRadio, binding.couponShippingRadio, binding.freeShippingAboveRadio),
             binding.shippingOptionsGroup
         ) { lastCheckedShippingId = it }
         
-        // A partir de (RadioButton individual)
-        binding.fromPriceCheckbox.setOnClickListener {
-            if (lastCheckedFromPriceId == binding.fromPriceCheckbox.id && binding.fromPriceCheckbox.isChecked) {
-                binding.fromPriceCheckbox.isChecked = false
+        binding.fromPriceCheckbox.setOnClickListener { v ->
+            if (lastCheckedFromPriceId == v.id) {
+                (v as android.widget.RadioButton).isChecked = false
                 lastCheckedFromPriceId = -1
             } else {
-                lastCheckedFromPriceId = binding.fromPriceCheckbox.id
+                lastCheckedFromPriceId = v.id
             }
         }
         
-        // Link de Cupons (RadioButton individual)
-        binding.couponLinkCheckbox.setOnClickListener {
-            if (lastCheckedCouponLinkId == binding.couponLinkCheckbox.id && binding.couponLinkCheckbox.isChecked) {
-                binding.couponLinkCheckbox.isChecked = false
+        binding.couponLinkCheckbox.setOnClickListener { v ->
+            if (lastCheckedCouponLinkId == v.id) {
+                (v as android.widget.RadioButton).isChecked = false
                 lastCheckedCouponLinkId = -1
             } else {
-                lastCheckedCouponLinkId = binding.couponLinkCheckbox.id
+                lastCheckedCouponLinkId = v.id
             }
         }
         
-        // Link do Grupo (RadioButton individual)
-        binding.groupLinkCheckbox.setOnClickListener {
-            if (lastCheckedGroupLinkId == binding.groupLinkCheckbox.id && binding.groupLinkCheckbox.isChecked) {
-                binding.groupLinkCheckbox.isChecked = false
+        binding.groupLinkCheckbox.setOnClickListener { v ->
+            if (lastCheckedGroupLinkId == v.id) {
+                (v as android.widget.RadioButton).isChecked = false
                 lastCheckedGroupLinkId = -1
             } else {
-                lastCheckedGroupLinkId = binding.groupLinkCheckbox.id
+                lastCheckedGroupLinkId = v.id
             }
         }
         
-        // Checkbox de desconto na tela de pagamento
-        binding.paymentScreenDiscountCheckbox.setOnClickListener {
-            if (lastCheckedPaymentDiscountId == binding.paymentScreenDiscountCheckbox.id && binding.paymentScreenDiscountCheckbox.isChecked) {
-                binding.paymentScreenDiscountCheckbox.isChecked = false
+        binding.paymentScreenDiscountCheckbox.setOnClickListener { v ->
+            if (lastCheckedPaymentDiscountId == v.id) {
+                (v as android.widget.CheckBox).isChecked = false
                 lastCheckedPaymentDiscountId = -1
             } else {
-                lastCheckedPaymentDiscountId = binding.paymentScreenDiscountCheckbox.id
+                lastCheckedPaymentDiscountId = v.id
             }
         }
     }
@@ -192,14 +195,14 @@ class WhatsappFormFragment : Fragment() {
     private fun setupToggleGroup(radioButtons: List<android.widget.RadioButton>, radioGroup: android.widget.RadioGroup, updateLastChecked: (Int) -> Unit) {
         var lastCheckedId = -1
         radioButtons.forEach { radioButton ->
-            radioButton.setOnClickListener {
-                if (lastCheckedId == radioButton.id) {
+            radioButton.setOnClickListener { v ->
+                if (lastCheckedId == v.id) {
                     radioGroup.clearCheck()
                     lastCheckedId = -1
                     updateLastChecked(-1)
                 } else {
-                    lastCheckedId = radioButton.id
-                    updateLastChecked(radioButton.id)
+                    lastCheckedId = v.id
+                    updateLastChecked(v.id)
                 }
             }
         }
@@ -243,17 +246,13 @@ class WhatsappFormFragment : Fragment() {
                 Log.d("ShopeeAPI", "Tentando API - ShopID: $shopId, ItemID: $itemId")
 
                 val timestamp = System.currentTimeMillis() / 1000
-
-                // GraphQL query para buscar produto específico usando shopId e itemId
                 val query = "{ productOfferV2(shopId: $shopId, itemId: $itemId) { nodes { commissionRate commission imageUrl price priceMin priceMax productLink offerLink productName } }}"
-
                 val payload = buildJsonObject { put("query", query) }.toString()
                 
                 Log.d("ShopeeAPI", "Timestamp: $timestamp")
                 Log.d("ShopeeAPI", "Payload: $payload")
                 
                 val signature = generateSignature(timestamp, payload)
-                
                 Log.d("ShopeeAPI", "Signature gerada: $signature")
 
                 val response = client.post(API_URL) {
@@ -279,13 +278,11 @@ class WhatsappFormFragment : Fragment() {
                     Log.d("ShopeeAPI", "Produto encontrado via API: ${product.productName}")
                     binding.adTitleEditText.setText(product.productName)
                     
-                    // Usar priceMin como padrão, depois price
                     val priceValue = product.priceMin ?: product.price
                     if (priceValue != null) {
                         binding.priceEditText.setText(formatPrice(priceValue))
                     }
                     
-                    // Marcar "A partir de" automaticamente se priceMin < priceMax
                     val priceMin = product.priceMin?.toDoubleOrNull()
                     val priceMax = product.priceMax?.toDoubleOrNull()
                     
@@ -299,9 +296,20 @@ class WhatsappFormFragment : Fragment() {
                         Log.d("ShopeeAPI", "Checkbox 'A partir de' desmarcado: priceMin=$priceMin, priceMax=$priceMax")
                     }
                     
+                    if (product.imageUrl != null && product.imageUrl.isNotBlank()) {
+                        Log.d("ShopeeAPI", "ImageURL encontrada: ${product.imageUrl}")
+                        currentImageUrl = product.imageUrl
+                        loadMediaPreview(product.imageUrl)
+                    } else {
+                        Log.w("ShopeeAPI", "ImageURL não disponível ou vazia")
+                        currentImageUrl = null
+                        binding.mediaPreviewWebview.visibility = View.GONE
+                    }
+                    
                     Toast.makeText(requireContext(), "✅ Produto encontrado via API!", Toast.LENGTH_SHORT).show()
                 } else {
                     Log.w("ShopeeAPI", "API retornou sucesso, mas sem dados do produto.")
+                    binding.mediaPreviewWebview.visibility = View.GONE
                     Toast.makeText(requireContext(), "❌ Produto não encontrado na API.", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
@@ -313,8 +321,43 @@ class WhatsappFormFragment : Fragment() {
         }
     }
 
+    private fun loadMediaPreview(mediaUrl: String) {
+        Log.d("MediaAnalysis", "Carregando preview: $mediaUrl")
+        
+        val html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                    body { margin: 0; padding: 0; background: #f5f5f5; height: 100vh; }
+                    .media-container { 
+                        width: 100%; height: 100vh; display: flex; 
+                        align-items: center; justify-content: center;
+                        padding: 8px; box-sizing: border-box;
+                    }
+                    img { 
+                        max-width: 100%; max-height: 100%; object-fit: contain;
+                        border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="media-container">
+                    <img src="$mediaUrl" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkVycm8gYW8gY2FycmVnYXI8L3RleHQ+PC9zdmc+';">
+                </div>
+            </body>
+            </html>
+        """.trimIndent()
+        
+        binding.mediaPreviewWebview.apply {
+            settings.javaScriptEnabled = true
+            loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+            visibility = View.VISIBLE
+        }
+    }
+
     private fun extractIds(url: String): Pair<String?, String?> {
-        // Corrected Regex to handle paths like /opaanlp/shopId/itemId
         Regex(".*?/(\\d+)/(\\d+)").find(url)?.let {
             if (it.groupValues.size == 3) {
                 val shopId = it.groupValues[1]
@@ -322,7 +365,6 @@ class WhatsappFormFragment : Fragment() {
                 return Pair(shopId, itemId)
             }
         }
-        // Handles formats like i.shopId.itemId
         Regex(".*i\\.(\\d+)\\.(\\d+)").find(url)?.let {
             if (it.groupValues.size == 3) {
                 val shopId = it.groupValues[1]
@@ -330,7 +372,6 @@ class WhatsappFormFragment : Fragment() {
                 return Pair(shopId, itemId)
             }
         }
-        // Handles formats like ?item_id=...&shop_id=...
         Regex(".*item_id=(\\d+).*shop_id=(\\d+)").find(url)?.let {
             if (it.groupValues.size == 3) {
                 val itemId = it.groupValues[1]
@@ -342,24 +383,16 @@ class WhatsappFormFragment : Fragment() {
     }
 
     private fun generateSignature(timestamp: Long, payload: String): String {
-        // Conforme documentação: AppId + Timestamp + Payload + Secret
         val factor = "$APP_ID$timestamp$payload$SECRET"
-        
-        // Usar SHA256 simples (não HMAC)
-        val digest = MessageDigest.getInstance("SHA-256")
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
         val hashBytes = digest.digest(factor.toByteArray(Charsets.UTF_8))
-        
-        // Converter para hexadecimal
         return hashBytes.joinToString("") { "%02x".format(it) }
     }
 
     private fun formatPrice(price: String): String {
         return try {
-            // A API da Shopee retorna o preço em formato decimal com ponto (ex: "679.42")
-            // Converter para formato brasileiro com vírgula (ex: "679,42")
             val priceValue = price.toDoubleOrNull()
             if (priceValue != null) {
-                // Formatar com 2 casas decimais e vírgula
                 String.format("%.2f", priceValue).replace('.', ',')
             } else {
                 price.replace('.', ',')
@@ -382,7 +415,7 @@ class WhatsappFormFragment : Fragment() {
             show()
         }
     }
-
+    
     private fun clearAllFields() {
         binding.associateLinkEditText.text?.clear()
         binding.adTitleEditText.text?.clear()
@@ -396,17 +429,62 @@ class WhatsappFormFragment : Fragment() {
         binding.freeShippingAboveEditText.text?.clear()
         binding.couponLinkCheckbox.isChecked = false
         binding.groupLinkCheckbox.isChecked = false
-        
-        // Resetar todos os controles de radio button e checkbox
-        lastCheckedExclusivityId = -1
-        lastCheckedShippingId = -1
-        lastCheckedFromPriceId = -1
-        lastCheckedCouponLinkId = -1
-        lastCheckedGroupLinkId = -1
-        lastCheckedPaymentDiscountId = -1
+        binding.mediaPreviewWebview.visibility = View.GONE
+        currentImageUrl = null
     }
+    
     private fun copyAdToClipboard() {
-         val adText = buildString { 
+        AlertDialog.Builder(requireContext())
+            .setTitle("Copiar Anúncio")
+            .setMessage("Como deseja copiar o anúncio?")
+            .setPositiveButton("Com Imagem") { _, _ ->
+                copyAdWithImage()
+            }
+            .setNegativeButton("Sem Imagem") { _, _ ->
+                copyAdWithoutImage()
+            }
+            .show()
+    }
+
+    private fun copyAdWithImage() {
+        if (currentImageUrl == null) {
+            Toast.makeText(requireContext(), "Nenhuma imagem disponível", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        lifecycleScope.launch {
+            try {
+                val imageBytes = client.get(currentImageUrl!!).body<ByteArray>()
+                val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                
+                val imageUri = MediaStore.Images.Media.insertImage(
+                    requireContext().contentResolver,
+                    bitmap,
+                    "Produto_${System.currentTimeMillis()}",
+                    "Imagem do produto"
+                )
+                
+                val adText = buildAdText()
+                
+                val shareIntent = Intent().apply {
+                    action = Intent.ACTION_SEND
+                    type = "image/*"
+                    putExtra(Intent.EXTRA_STREAM, Uri.parse(imageUri))
+                    putExtra(Intent.EXTRA_TEXT, adText)
+                }
+                
+                startActivity(Intent.createChooser(shareIntent, "Compartilhar anúncio com imagem"))
+                
+            } catch (e: Exception) {
+                Log.e("CopyImage", "Erro ao processar imagem: ${e.message}")
+                Toast.makeText(requireContext(), "Erro ao processar imagem. Copiando apenas texto.", Toast.LENGTH_SHORT).show()
+                copyAdWithoutImage()
+            }
+        }
+    }
+    
+    private fun buildAdText(): String {
+        return buildString {
             val adTitle = binding.adTitleEditText.text.toString().trim()
             if (adTitle.isNotBlank()) {
                 appendLine(adTitle)
@@ -456,6 +534,10 @@ class WhatsappFormFragment : Fragment() {
                 appendLine()
             }
         }.trim()
+    }
+
+    private fun copyAdWithoutImage() {
+        val adText = buildAdText()
 
         if (adText.isEmpty()) {
             Toast.makeText(requireContext(), "Nada para copiar!", Toast.LENGTH_SHORT).show()
@@ -466,7 +548,7 @@ class WhatsappFormFragment : Fragment() {
         val clip = ClipData.newPlainText("Anúncio", adText)
         clipboard.setPrimaryClip(clip)
 
-        Toast.makeText(requireContext(), "Anúncio copiado!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), "Anúncio copiado sem imagem!", Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroyView() {
