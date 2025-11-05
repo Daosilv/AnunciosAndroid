@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.net.Uri
 import android.provider.MediaStore
 import java.io.ByteArrayOutputStream
@@ -121,6 +122,35 @@ class WhatsappFormFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         setupListeners()
+        initializePreview()
+    }
+    
+    private fun initializePreview() {
+        binding.mediaPreviewWebview.apply {
+            settings.javaScriptEnabled = true
+            visibility = View.VISIBLE
+            loadDataWithBaseURL(null, getEmptyPreviewHtml(), "text/html", "UTF-8", null)
+        }
+    }
+    
+    private fun getEmptyPreviewHtml(): String {
+        return """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    html, body { 
+                        width: 100%; height: 100%; 
+                        background: #f0f0f0; 
+                        overflow: hidden;
+                    }
+                </style>
+            </head>
+            <body></body>
+            </html>
+        """.trimIndent()
     }
 
     private fun setupListeners() {
@@ -303,13 +333,13 @@ class WhatsappFormFragment : Fragment() {
                     } else {
                         Log.w("ShopeeAPI", "ImageURL não disponível ou vazia")
                         currentImageUrl = null
-                        binding.mediaPreviewWebview.visibility = View.GONE
+                        initializePreview()
                     }
                     
                     Toast.makeText(requireContext(), "✅ Produto encontrado via API!", Toast.LENGTH_SHORT).show()
                 } else {
                     Log.w("ShopeeAPI", "API retornou sucesso, mas sem dados do produto.")
-                    binding.mediaPreviewWebview.visibility = View.GONE
+                    initializePreview()
                     Toast.makeText(requireContext(), "❌ Produto não encontrado na API.", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
@@ -330,21 +360,26 @@ class WhatsappFormFragment : Fragment() {
             <head>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
-                    body { margin: 0; padding: 0; background: #f5f5f5; height: 100vh; }
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    html, body { 
+                        width: 100%; height: 100%; 
+                        background: transparent; 
+                        overflow: hidden;
+                    }
                     .media-container { 
-                        width: 100%; height: 100vh; display: flex; 
-                        align-items: center; justify-content: center;
-                        padding: 8px; box-sizing: border-box;
+                        width: 100%; height: 100%; 
+                        display: flex; align-items: center; justify-content: center;
                     }
                     img { 
-                        max-width: 100%; max-height: 100%; object-fit: contain;
-                        border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                        width: 100%; height: 100%; 
+                        object-fit: cover;
+                        display: block;
                     }
                 </style>
             </head>
             <body>
                 <div class="media-container">
-                    <img src="$mediaUrl" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkVycm8gYW8gY2FycmVnYXI8L3RleHQ+PC9zdmc+';">
+                    <img src="$mediaUrl" onerror="this.style.display='none';">
                 </div>
             </body>
             </html>
@@ -429,7 +464,7 @@ class WhatsappFormFragment : Fragment() {
         binding.freeShippingAboveEditText.text?.clear()
         binding.couponLinkCheckbox.isChecked = false
         binding.groupLinkCheckbox.isChecked = false
-        binding.mediaPreviewWebview.visibility = View.GONE
+        initializePreview()
         currentImageUrl = null
     }
     
@@ -455,11 +490,12 @@ class WhatsappFormFragment : Fragment() {
         lifecycleScope.launch {
             try {
                 val imageBytes = client.get(currentImageUrl!!).body<ByteArray>()
-                val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                val originalBitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                val croppedBitmap = removeWhiteBorders(originalBitmap)
                 
                 val imageUri = MediaStore.Images.Media.insertImage(
                     requireContext().contentResolver,
-                    bitmap,
+                    croppedBitmap,
                     "Produto_${System.currentTimeMillis()}",
                     "Imagem do produto"
                 )
@@ -481,6 +517,72 @@ class WhatsappFormFragment : Fragment() {
                 copyAdWithoutImage()
             }
         }
+    }
+    
+    private fun removeWhiteBorders(bitmap: Bitmap): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        
+        var top = 0
+        var bottom = height - 1
+        var left = 0
+        var right = width - 1
+        
+        // Encontrar borda superior
+        outer@ for (y in 0 until height) {
+            for (x in 0 until width) {
+                if (!isWhitePixel(bitmap.getPixel(x, y))) {
+                    top = y
+                    break@outer
+                }
+            }
+        }
+        
+        // Encontrar borda inferior
+        outer@ for (y in height - 1 downTo 0) {
+            for (x in 0 until width) {
+                if (!isWhitePixel(bitmap.getPixel(x, y))) {
+                    bottom = y
+                    break@outer
+                }
+            }
+        }
+        
+        // Encontrar borda esquerda
+        outer@ for (x in 0 until width) {
+            for (y in top..bottom) {
+                if (!isWhitePixel(bitmap.getPixel(x, y))) {
+                    left = x
+                    break@outer
+                }
+            }
+        }
+        
+        // Encontrar borda direita
+        outer@ for (x in width - 1 downTo 0) {
+            for (y in top..bottom) {
+                if (!isWhitePixel(bitmap.getPixel(x, y))) {
+                    right = x
+                    break@outer
+                }
+            }
+        }
+        
+        val croppedWidth = right - left + 1
+        val croppedHeight = bottom - top + 1
+        
+        return if (croppedWidth > 0 && croppedHeight > 0) {
+            Bitmap.createBitmap(bitmap, left, top, croppedWidth, croppedHeight)
+        } else {
+            bitmap
+        }
+    }
+    
+    private fun isWhitePixel(pixel: Int): Boolean {
+        val red = Color.red(pixel)
+        val green = Color.green(pixel)
+        val blue = Color.blue(pixel)
+        return red > 240 && green > 240 && blue > 240
     }
     
     private fun buildAdText(): String {
