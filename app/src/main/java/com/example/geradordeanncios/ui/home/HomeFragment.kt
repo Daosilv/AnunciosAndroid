@@ -37,6 +37,10 @@ class HomeFragment : Fragment() {
         binding.instagramCard.setOnClickListener {
             findNavController().navigate(R.id.action_navigation_home_to_instagramFragment)
         }
+
+        binding.telegramCard.setOnClickListener {
+            findNavController().navigate(R.id.action_navigation_home_to_telegramFormFragment)
+        }
     }
 
     override fun onDestroyView() {

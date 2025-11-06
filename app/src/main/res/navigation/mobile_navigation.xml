@@ -19,6 +19,9 @@
         <action
             android:id="@+id/action_navigation_home_to_instagramFragment"
             app:destination="@+id/instagramFragment" />
+        <action
+            android:id="@+id/action_navigation_home_to_telegramFormFragment"
+            app:destination="@+id/telegramFormFragment" />
     </fragment>
 
     <fragment
@@ -38,6 +41,12 @@
         android:name="com.example.geradordeanncios.ui.instagram.InstagramFragment"
         android:label="Instagram"
         tools:layout="@layout/fragment_instagram" />
+
+    <fragment
+        android:id="@+id/telegramFormFragment"
+        android:name="com.example.geradordeanncios.ui.telegram.TelegramFormFragment"
+        android:label="Vídeos do Telegram"
+        tools:layout="@layout/fragment_telegram_form" />
 
     <fragment
         android:id="@+id/navigation_dashboard"
