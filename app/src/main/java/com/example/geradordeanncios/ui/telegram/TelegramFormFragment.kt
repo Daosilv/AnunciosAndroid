@@ -78,8 +78,6 @@ data class ShortLinkNode(
     val shortLink: String
 )
 
-
-
 class TelegramFormFragment : Fragment() {
 
     private var _binding: FragmentTelegramFormBinding? = null
@@ -90,8 +88,12 @@ class TelegramFormFragment : Fragment() {
     private var isFetching = false
 
     private var couponLink = "https://s.shopee.com.br/1g76ck3c1x"
-    private var groupLink = ""
+    private var groupLink = "https://chat.whatsapp.com/LyGtLhQqxWbDqjiklHldOm"
     private var selectedVideoUri: Uri? = null
+    
+    // Controle de estado dos checkboxes
+    private var lastCheckedExclusivityId: Int = -1
+    private var lastCheckedShippingId: Int = -1
 
     private val videoPickerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -188,6 +190,7 @@ class TelegramFormFragment : Fragment() {
         binding.clearButton.setOnClickListener { clearAllFields() }
         binding.copyAdButton.setOnClickListener { copyAdToClipboard() }
         setupUrlAutoFill()
+        setupToggleableCheckboxes()
     }
     
     private fun selectVideo() {
@@ -220,6 +223,64 @@ class TelegramFormFragment : Fragment() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
+    }
+    
+    private fun setupToggleableCheckboxes() {
+        // Exclusividade - RadioButtons toggleáveis
+        binding.primeRadio.setOnClickListener { v ->
+            if (lastCheckedExclusivityId == v.id) {
+                binding.exclusivityGroup.clearCheck()
+                lastCheckedExclusivityId = -1
+            } else {
+                lastCheckedExclusivityId = v.id
+            }
+        }
+        
+        binding.meliPlusRadio.setOnClickListener { v ->
+            if (lastCheckedExclusivityId == v.id) {
+                binding.exclusivityGroup.clearCheck()
+                lastCheckedExclusivityId = -1
+            } else {
+                lastCheckedExclusivityId = v.id
+            }
+        }
+        
+        binding.exclusiveRadio.setOnClickListener { v ->
+            if (lastCheckedExclusivityId == v.id) {
+                binding.exclusivityGroup.clearCheck()
+                lastCheckedExclusivityId = -1
+            } else {
+                lastCheckedExclusivityId = v.id
+            }
+        }
+        
+        // Opções de Frete - RadioButtons toggleáveis
+        binding.freeShippingRadio.setOnClickListener { v ->
+            if (lastCheckedShippingId == v.id) {
+                binding.shippingOptionsGroup.clearCheck()
+                lastCheckedShippingId = -1
+            } else {
+                lastCheckedShippingId = v.id
+            }
+        }
+        
+        binding.couponShippingRadio.setOnClickListener { v ->
+            if (lastCheckedShippingId == v.id) {
+                binding.shippingOptionsGroup.clearCheck()
+                lastCheckedShippingId = -1
+            } else {
+                lastCheckedShippingId = v.id
+            }
+        }
+        
+        binding.freeShippingAboveRadio.setOnClickListener { v ->
+            if (lastCheckedShippingId == v.id) {
+                binding.shippingOptionsGroup.clearCheck()
+                lastCheckedShippingId = -1
+            } else {
+                lastCheckedShippingId = v.id
+            }
+        }
     }
 
     private fun fetchTelegramPost(url: String) {
@@ -317,6 +378,7 @@ class TelegramFormFragment : Fragment() {
                     
                     video.muted = true;
                     video.volume = 0;
+                    video.defaultMuted = true;
                     video.load();
                 </script>
             </body></html>
@@ -335,9 +397,6 @@ class TelegramFormFragment : Fragment() {
                 val payload = buildJsonObject { put("query", mutation) }.toString()
                 val signature = generateSignature(timestamp, payload)
 
-                Log.d("ShopeeAPI", "Payload de afiliado: $payload")
-                Log.d("ShopeeAPI", "Signature de afiliado: $signature")
-
                 val response = client.post(API_URL) {
                     contentType(ContentType.Application.Json)
                     header("Authorization", "SHA256 Credential=$APP_ID, Timestamp=$timestamp, Signature=$signature")
@@ -345,7 +404,6 @@ class TelegramFormFragment : Fragment() {
                 }
 
                 val responseText = response.bodyAsText()
-                Log.d("ShopeeAPI", "Resposta do link de afiliado: $responseText")
 
                 if (responseText.contains("errors")) {
                     val errorMessage = responseText.substringAfter("message\":\"").substringBefore("\"")
@@ -358,7 +416,6 @@ class TelegramFormFragment : Fragment() {
                 if (shortLink != null) {
                     binding.associateLinkEditText.setText(shortLink)
                     Toast.makeText(requireContext(), "✅ Link de afiliado gerado!", Toast.LENGTH_SHORT).show()
-                    // Buscar informações do produto após gerar o link
                     fetchProductDetails(originalUrl)
                 } else {
                     throw Exception("shortLink nulo na resposta da API.")
@@ -490,6 +547,8 @@ class TelegramFormFragment : Fragment() {
         binding.freeShippingAboveEditText.text?.clear()
         binding.couponLinkCheckbox.isChecked = false
         binding.groupLinkCheckbox.isChecked = false
+        lastCheckedExclusivityId = -1
+        lastCheckedShippingId = -1
         selectedVideoUri = null
         initializePreview()
         Toast.makeText(requireContext(), "Campos limpos!", Toast.LENGTH_SHORT).show()
@@ -558,10 +617,22 @@ class TelegramFormFragment : Fragment() {
             }
         }.trim()
         
+        // Usar Intent de compartilhamento se há vídeo
+        if (selectedVideoUri != null) {
+            val shareIntent = Intent().apply {
+                action = Intent.ACTION_SEND
+                type = "video/*"
+                putExtra(Intent.EXTRA_STREAM, selectedVideoUri)
+                putExtra(Intent.EXTRA_TEXT, ad)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Compartilhar vídeo e anúncio"))
+            return
+        }
+        
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText("Anúncio Telegram", ad)
         clipboard.setPrimaryClip(clip)
-        
         Toast.makeText(requireContext(), "Anúncio copiado para a área de transferência!", Toast.LENGTH_SHORT).show()
     }
 
