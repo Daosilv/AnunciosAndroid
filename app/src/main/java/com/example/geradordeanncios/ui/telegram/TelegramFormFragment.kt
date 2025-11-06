@@ -1,13 +1,17 @@
 package com.example.geradordeanncios.ui.telegram
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
@@ -16,6 +20,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.example.geradordeanncios.databinding.FragmentTelegramFormBinding
@@ -73,6 +78,8 @@ data class ShortLinkNode(
     val shortLink: String
 )
 
+
+
 class TelegramFormFragment : Fragment() {
 
     private var _binding: FragmentTelegramFormBinding? = null
@@ -84,7 +91,16 @@ class TelegramFormFragment : Fragment() {
 
     private var couponLink = "https://s.shopee.com.br/1g76ck3c1x"
     private var groupLink = ""
-    private var currentVideoUrl: String? = null
+    private var selectedVideoUri: Uri? = null
+
+    private val videoPickerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.data?.let { uri ->
+                selectedVideoUri = uri
+                loadVideoPreview(uri)
+            }
+        }
+    }
 
     private val client = HttpClient(CIO) {
         followRedirects = true
@@ -109,6 +125,8 @@ class TelegramFormFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         binding.mediaPreviewWebview.settings.javaScriptEnabled = true
+        binding.mediaPreviewWebview.isClickable = false
+        binding.mediaPreviewWebview.isFocusable = false
         initializePreview()
         setupListeners()
     }
@@ -120,11 +138,36 @@ class TelegramFormFragment : Fragment() {
                 html, body { 
                     width: 100%; height: 100%; 
                     background: #f0f0f0; 
-                    overflow: hidden;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-family: Arial, sans-serif;
+                    cursor: pointer;
                 }
-            </style></head><body></body></html>
+                .add-video {
+                    text-align: center;
+                    color: #666;
+                    padding: 20px;
+                }
+                .icon { font-size: 48px; margin-bottom: 10px; }
+            </style></head><body>
+                <div class="add-video">
+                    <div class="icon">📹</div>
+                    <p><strong>Adicionar Vídeo</strong></p>
+                    <p>Toque para selecionar</p>
+                </div>
+            </body></html>
         """.trimIndent()
         binding.mediaPreviewWebview.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+        
+        // Criar overlay transparente para capturar cliques apenas quando não há vídeo
+        binding.mediaPreviewWebview.setOnTouchListener { _, event ->
+            if (selectedVideoUri == null && event.action == android.view.MotionEvent.ACTION_DOWN) {
+                Log.d("VideoSelection", "WebView tocado")
+                selectVideo()
+            }
+            selectedVideoUri == null // Só consome o evento se não há vídeo
+        }
     }
 
     private fun setupListeners() {
@@ -146,15 +189,32 @@ class TelegramFormFragment : Fragment() {
         binding.copyAdButton.setOnClickListener { copyAdToClipboard() }
         setupUrlAutoFill()
     }
+    
+    private fun selectVideo() {
+        Log.d("VideoSelection", "selectVideo() chamado")
+        Toast.makeText(requireContext(), "Abrindo seletor de vídeo...", Toast.LENGTH_SHORT).show()
+        
+        val intent = Intent(Intent.ACTION_PICK, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+        intent.type = "video/*"
+        videoPickerLauncher.launch(intent)
+    }
 
     private fun setupUrlAutoFill() {
         binding.telegramPostEditText.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
                 searchRunnable?.let { handler.removeCallbacks(it) }
                 val url = s.toString().trim()
-                if (url.contains("t.me/") && binding.telegramPostEditText.isFocused && !isFetching) {
-                    searchRunnable = Runnable { fetchTelegramPost(url) }
-                    handler.postDelayed(searchRunnable!!, 800)
+                if (binding.telegramPostEditText.isFocused && !isFetching) {
+                    when {
+                        url.contains("t.me/") -> {
+                            searchRunnable = Runnable { fetchTelegramPost(url) }
+                            handler.postDelayed(searchRunnable!!, 800)
+                        }
+                        url.contains("shopee.com.br") -> {
+                            searchRunnable = Runnable { generateAffiliateLink(url) }
+                            handler.postDelayed(searchRunnable!!, 800)
+                        }
+                    }
                 }
             }
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -185,31 +245,6 @@ class TelegramFormFragment : Fragment() {
                 val allLinksRegex = Regex("(https?://[^\\s]+)")
                 val shopeeLink = allLinksRegex.findAll(description).map { it.value }.firstOrNull { it.contains("shopee.com.br") } ?: ""
                 
-                // Múltiplas estratégias para encontrar vídeo
-                val videoPatterns = listOf(
-                    Regex("<meta property=\"og:video\" content=\"([^\"]*)\">")
-                )
-                
-                var videoUrl = ""
-                for (pattern in videoPatterns) {
-                    val match = pattern.find(html)
-                    if (match != null) {
-                        videoUrl = match.groupValues[1]
-                        Log.d("TelegramAPI", "Vídeo encontrado: $videoUrl")
-                        break
-                    }
-                }
-                
-                if (videoUrl.isNotEmpty()) {
-                    currentVideoUrl = videoUrl
-                    loadVideoPreview(videoUrl)
-                } else {
-                    Log.w("TelegramAPI", "Nenhum vídeo encontrado no HTML")
-                    currentVideoUrl = null
-                    showTelegramPostInfo(description)
-                }
-                
-                // Processar link da Shopee independentemente do vídeo
                 if (shopeeLink.isNotEmpty()) {
                     Log.d("TelegramAPI", "Link da Shopee encontrado: $shopeeLink")
                     Toast.makeText(requireContext(), "✅ Post processado! Gerando link de afiliado...", Toast.LENGTH_SHORT).show()
@@ -228,37 +263,8 @@ class TelegramFormFragment : Fragment() {
         }
     }
 
-    private fun showTelegramPostInfo(description: String) {
-        val shortDesc = if (description.length > 100) "${description.take(100)}..." else description
-        val html = """
-            <!DOCTYPE html><html><head><style>
-                * { margin: 0; padding: 0; }
-                html, body { 
-                    width: 100%; height: 100%; 
-                    background: #f0f0f0; 
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-family: Arial, sans-serif;
-                    padding: 20px;
-                }
-                .message { text-align: center; color: #666; max-width: 300px; }
-                .icon { font-size: 48px; margin-bottom: 10px; }
-                .desc { font-size: 12px; margin-top: 10px; line-height: 1.4; }
-            </style></head><body>
-                <div class="message">
-                    <div class="icon">📹</div>
-                    <p><strong>Post do Telegram</strong></p>
-                    <p>Vídeo processado com sucesso</p>
-                    ${if (shortDesc.isNotEmpty()) "<div class='desc'>$shortDesc</div>" else ""}
-                </div>
-            </body></html>
-        """.trimIndent()
-        binding.mediaPreviewWebview.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
-    }
-
-    private fun loadVideoPreview(videoUrl: String) {
-        Log.d("VideoPreview", "Carregando preview para: $videoUrl")
+    private fun loadVideoPreview(videoUri: Uri) {
+        Log.d("VideoPreview", "Carregando preview para: $videoUri")
         
         val html = """
             <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>
@@ -269,16 +275,15 @@ class TelegramFormFragment : Fragment() {
                 .play-btn { background: rgba(255,255,255,0.8); border: none; border-radius: 50%; width: 50px; height: 50px; font-size: 20px; cursor: pointer; }
                 .error { color: white; text-align: center; padding: 20px; font-family: Arial, sans-serif; }
             </style></head><body>
-                <video id="video" muted preload="metadata" crossorigin="anonymous">
-                    <source src="$videoUrl" type="video/mp4">
-                    <source src="$videoUrl" type="video/webm">
-                    <source src="$videoUrl">
+                <video id="video" muted preload="metadata">
+                    <source src="$videoUri" type="video/mp4">
+                    <source src="$videoUri">
                 </video>
                 <div class="controls">
                     <button class="play-btn" id="playBtn" onclick="togglePlay()">▶</button>
                 </div>
                 <div id="errorMsg" class="error" style="display:none;">
-                    📹 Vídeo do Telegram<br>Preview não disponível
+                    📹 Vídeo Selecionado<br>Preview não disponível
                 </div>
                 <script>
                     const video = document.getElementById('video');
@@ -310,11 +315,8 @@ class TelegramFormFragment : Fragment() {
                         playBtn.innerHTML = '▶';
                     });
                     
-                    // Garantir que o áudio está sempre mutado
                     video.muted = true;
                     video.volume = 0;
-                    
-                    // Tentar carregar o vídeo
                     video.load();
                 </script>
             </body></html>
@@ -479,7 +481,16 @@ class TelegramFormFragment : Fragment() {
         binding.associateLinkEditText.text?.clear()
         binding.adTitleEditText.text?.clear()
         binding.priceEditText.text?.clear()
-        currentVideoUrl = null
+        binding.couponEditText.text?.clear()
+        binding.exclusivityGroup.clearCheck()
+        binding.exclusiveFieldEditText.text?.clear()
+        binding.fromPriceCheckbox.isChecked = false
+        binding.paymentScreenDiscountCheckbox.isChecked = false
+        binding.shippingOptionsGroup.clearCheck()
+        binding.freeShippingAboveEditText.text?.clear()
+        binding.couponLinkCheckbox.isChecked = false
+        binding.groupLinkCheckbox.isChecked = false
+        selectedVideoUri = null
         initializePreview()
         Toast.makeText(requireContext(), "Campos limpos!", Toast.LENGTH_SHORT).show()
     }
@@ -557,6 +568,7 @@ class TelegramFormFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         searchRunnable?.let { handler.removeCallbacks(it) }
+        client.close()
         _binding = null
     }
 }
