@@ -213,15 +213,29 @@ class TelegramVideoFragment : Fragment() {
     }
 
     private fun setupToggleableRadioButtons() {
-        setupToggleGroup(
-            listOf(binding.primeRadio, binding.meliPlusRadio, binding.exclusiveRadio),
-            binding.exclusivityGroup
-        ) { lastCheckedExclusivityId = it }
+        var lastExclusivityId = -1
+        listOf(binding.primeRadio, binding.meliPlusRadio, binding.exclusiveRadio).forEach { radioButton ->
+            radioButton.setOnClickListener { v ->
+                if (lastExclusivityId == v.id) {
+                    binding.exclusivityGroup.clearCheck()
+                    lastExclusivityId = -1
+                } else {
+                    lastExclusivityId = v.id
+                }
+            }
+        }
         
-        setupToggleGroup(
-            listOf(binding.freeShippingRadio, binding.couponShippingRadio, binding.freeShippingAboveRadio),
-            binding.shippingOptionsGroup
-        ) { lastCheckedShippingId = it }
+        var lastShippingId = -1
+        listOf(binding.freeShippingRadio, binding.couponShippingRadio, binding.freeShippingAboveRadio).forEach { radioButton ->
+            radioButton.setOnClickListener { v ->
+                if (lastShippingId == v.id) {
+                    binding.shippingOptionsGroup.clearCheck()
+                    lastShippingId = -1
+                } else {
+                    lastShippingId = v.id
+                }
+            }
+        }
         
         binding.fromPriceCheckbox.setOnClickListener { v ->
             if (lastCheckedFromPriceId == v.id) {
@@ -260,21 +274,7 @@ class TelegramVideoFragment : Fragment() {
         }
     }
     
-    private fun setupToggleGroup(radioButtons: List<android.widget.RadioButton>, radioGroup: android.widget.RadioGroup, updateLastChecked: (Int) -> Unit) {
-        var lastCheckedId = -1
-        radioButtons.forEach { radioButton ->
-            radioButton.setOnClickListener { v ->
-                if (lastCheckedId == v.id) {
-                    radioGroup.clearCheck()
-                    lastCheckedId = -1
-                    updateLastChecked(-1)
-                } else {
-                    lastCheckedId = v.id
-                    updateLastChecked(v.id)
-                }
-            }
-        }
-    }
+
 
     private fun setupUrlAutoFill() {
         binding.originalLinkEditText.addTextChangedListener(object : TextWatcher {
@@ -577,34 +577,28 @@ class TelegramVideoFragment : Fragment() {
     }
     
     private fun copyAdToClipboard() {
-        AlertDialog.Builder(requireContext())
-            .setTitle("Copiar Anúncio")
-            .setMessage("Como deseja copiar o anúncio?")
-            .setPositiveButton("Com Vídeo") { _, _ ->
-                copyAdWithVideo()
-            }
-            .setNegativeButton("Sem Vídeo") { _, _ ->
-                copyAdWithoutVideo()
-            }
-            .show()
+        copyAdWithVideo()
     }
 
     private fun copyAdWithVideo() {
-        if (currentVideoUri == null) {
-            Toast.makeText(requireContext(), "Nenhum vídeo selecionado", Toast.LENGTH_SHORT).show()
-            return
-        }
-
         val adText = buildAdText()
         
-        val shareIntent = Intent().apply {
-            action = Intent.ACTION_SEND
-            type = "video/*"
-            putExtra(Intent.EXTRA_STREAM, currentVideoUri)
-            putExtra(Intent.EXTRA_TEXT, adText)
+        if (currentVideoUri != null) {
+            val shareIntent = Intent().apply {
+                action = Intent.ACTION_SEND
+                type = "video/*"
+                putExtra(Intent.EXTRA_STREAM, currentVideoUri)
+                putExtra(Intent.EXTRA_TEXT, adText)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Compartilhar anúncio com vídeo"))
+        } else {
+            val shareIntent = Intent().apply {
+                action = Intent.ACTION_SEND
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, adText)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Compartilhar anúncio"))
         }
-        
-        startActivity(Intent.createChooser(shareIntent, "Compartilhar anúncio com vídeo"))
     }
     
     private fun buildAdText(): String {
