@@ -348,8 +348,10 @@ class TelegramVideoFragment : Fragment() {
                     binding.associateLinkEditText.setText(shortLink)
                     Toast.makeText(requireContext(), "✅ ShortLink gerado com sucesso!", Toast.LENGTH_SHORT).show()
                     
-                    // Agora buscar detalhes do produto usando o shortLink
-                    fetchProductDetails(shortLink)
+                    // Buscar detalhes do produto usando o link original
+                    handler.postDelayed({
+                        fetchProductDetails(originalUrl)
+                    }, 500)
                 } else {
                     Log.w("ShortLinkAPI", "API retornou sucesso, mas sem shortLink.")
                     Toast.makeText(requireContext(), "❌ Falha ao gerar shortLink.", Toast.LENGTH_SHORT).show()
