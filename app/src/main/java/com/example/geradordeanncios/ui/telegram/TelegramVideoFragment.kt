@@ -72,6 +72,21 @@ data class ProductNode(
     val offerLink: String? = null
 )
 
+@Serializable
+data class ShortLinkResponse(
+    val data: ShortLinkData?
+)
+
+@Serializable
+data class ShortLinkData(
+    val generateShortLink: GenerateShortLink
+)
+
+@Serializable
+data class GenerateShortLink(
+    val shortLink: String
+)
+
 class TelegramVideoFragment : Fragment() {
 
     private var _binding: FragmentTelegramVideoBinding? = null
@@ -262,6 +277,19 @@ class TelegramVideoFragment : Fragment() {
     }
 
     private fun setupUrlAutoFill() {
+        binding.originalLinkEditText.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) {
+                searchRunnable?.let { handler.removeCallbacks(it) }
+                val url = s.toString().trim()
+                if (url.contains("shopee.com.br") && binding.originalLinkEditText.isFocused && !isFetching) {
+                    searchRunnable = Runnable { generateShortLink(url) }
+                    handler.postDelayed(searchRunnable!!, 800)
+                }
+            }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
+        
         binding.associateLinkEditText.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
                 searchRunnable?.let { handler.removeCallbacks(it) }
@@ -274,6 +302,65 @@ class TelegramVideoFragment : Fragment() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
+    }
+
+    private fun generateShortLink(originalUrl: String) {
+        if (isFetching) return
+        isFetching = true
+
+        lifecycleScope.launch {
+            try {
+                val timestamp = System.currentTimeMillis() / 1000
+                val mutation = """mutation{
+    generateShortLink(input:{originUrl:"$originalUrl",subIds:["s1","s2","s3","s4","s5"]}){
+        shortLink
+    }
+}"""
+                val payload = buildJsonObject { put("query", mutation) }.toString()
+                
+                Log.d("ShortLinkAPI", "Timestamp: $timestamp")
+                Log.d("ShortLinkAPI", "Payload: $payload")
+                
+                val signature = generateSignature(timestamp, payload)
+                Log.d("ShortLinkAPI", "Signature gerada: $signature")
+
+                val response = client.post(API_URL) {
+                    contentType(ContentType.Application.Json)
+                    header("Authorization", "SHA256 Credential=$APP_ID, Timestamp=$timestamp, Signature=$signature")
+                    setBody(payload)
+                }
+
+                val responseText = response.bodyAsText()
+                Log.d("ShortLinkAPI", "Resposta API: $responseText")
+
+                if (responseText.contains("errors")) {
+                    val errorMessage = responseText.substringAfter("message\":\"").substringBefore("\"")
+                    Log.e("ShortLinkAPI", "Erro da API: $errorMessage")
+                    Toast.makeText(requireContext(), "❌ Erro ao gerar shortLink: $errorMessage", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                val shortLinkResponse = Json { ignoreUnknownKeys = true }.decodeFromString<ShortLinkResponse>(responseText)
+                val shortLink = shortLinkResponse.data?.generateShortLink?.shortLink
+
+                if (shortLink != null) {
+                    Log.d("ShortLinkAPI", "ShortLink gerado: $shortLink")
+                    binding.associateLinkEditText.setText(shortLink)
+                    Toast.makeText(requireContext(), "✅ ShortLink gerado com sucesso!", Toast.LENGTH_SHORT).show()
+                    
+                    // Agora buscar detalhes do produto usando o shortLink
+                    fetchProductDetails(shortLink)
+                } else {
+                    Log.w("ShortLinkAPI", "API retornou sucesso, mas sem shortLink.")
+                    Toast.makeText(requireContext(), "❌ Falha ao gerar shortLink.", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e("ShortLinkAPI", "Exceção ao gerar shortLink: ${e.message}", e)
+                Toast.makeText(requireContext(), "❌ Falha na conexão com a API.", Toast.LENGTH_SHORT).show()
+            } finally {
+                isFetching = false
+            }
+        }
     }
 
     private fun fetchProductDetails(url: String) {
@@ -470,6 +557,7 @@ class TelegramVideoFragment : Fragment() {
     }
     
     private fun clearAllFields() {
+        binding.originalLinkEditText.text?.clear()
         binding.associateLinkEditText.text?.clear()
         binding.adTitleEditText.text?.clear()
         binding.exclusivityGroup.clearCheck()
