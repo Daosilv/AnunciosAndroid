@@ -333,7 +333,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Canal do Telegram" />
+                    android:text="Link do Grupo" />
 
                 <Button
                     android:id="@+id/edit_group_link_button"

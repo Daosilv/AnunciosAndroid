@@ -103,7 +103,7 @@ class TelegramVideoFragment : Fragment() {
     private var lastCheckedPaymentDiscountId: Int = -1
 
     private var couponLink = "https://s.shopee.com.br/1g76ck3c1x"
-    private var groupLink = "https://t.me/+exemplo"
+    private var groupLink = "https://chat.whatsapp.com/LyGtLhQqxWbDqjiklHldOm"
     private var currentVideoUri: Uri? = null
 
     private val client = HttpClient(CIO) {
@@ -200,9 +200,9 @@ class TelegramVideoFragment : Fragment() {
         }
 
         binding.editGroupLinkButton.setOnClickListener {
-            showEditLinkDialog("Editar Link do Canal Telegram", groupLink) { newLink ->
+            showEditLinkDialog("Editar Link do Grupo", groupLink) { newLink ->
                 groupLink = newLink
-                Toast.makeText(requireContext(), "Link do canal atualizado!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "Link do grupo atualizado!", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -653,7 +653,7 @@ class TelegramVideoFragment : Fragment() {
                 appendLine()
             }
             if (binding.groupLinkCheckbox.isChecked) {
-                appendLine("📱 Canal do Telegram:")
+                appendLine("📱 Link do Grupo:")
                 appendLine(groupLink)
                 appendLine()
             }
