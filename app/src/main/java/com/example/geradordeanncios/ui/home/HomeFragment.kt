@@ -30,6 +30,10 @@ class HomeFragment : Fragment() {
             findNavController().navigate(R.id.action_navigation_home_to_whatsappFormFragment)
         }
 
+        binding.telegramVideoCard.setOnClickListener {
+            findNavController().navigate(R.id.action_navigation_home_to_telegramVideoFragment)
+        }
+
         binding.facebookCard.setOnClickListener {
             findNavController().navigate(R.id.action_navigation_home_to_facebookFormFragment)
         }

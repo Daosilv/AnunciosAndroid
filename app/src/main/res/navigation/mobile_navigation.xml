@@ -14,6 +14,9 @@
             android:id="@+id/action_navigation_home_to_whatsappFormFragment"
             app:destination="@+id/whatsappFormFragment" />
         <action
+            android:id="@+id/action_navigation_home_to_telegramVideoFragment"
+            app:destination="@+id/telegramVideoFragment" />
+        <action
             android:id="@+id/action_navigation_home_to_facebookFormFragment"
             app:destination="@+id/facebookFormFragment" />
         <action
@@ -26,6 +29,12 @@
         android:name="com.example.geradordeanncios.ui.whatsapp.WhatsappFormFragment"
         android:label="Gerador de Anúncios"
         tools:layout="@layout/fragment_whatsapp_form" />
+
+    <fragment
+        android:id="@+id/telegramVideoFragment"
+        android:name="com.example.geradordeanncios.ui.telegram.TelegramVideoFragment"
+        android:label="Vídeos do Telegram"
+        tools:layout="@layout/fragment_telegram_video" />
 
     <fragment
         android:id="@+id/facebookFormFragment"
