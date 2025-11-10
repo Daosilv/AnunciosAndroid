@@ -328,8 +328,13 @@ class MercadoLivre2Fragment : Fragment() {
 
                 // Carregar imagem se disponível
                 if (!product.pictures.isNullOrEmpty()) {
-                    val imageUrl = product.pictures[0].secure_url
-                    Log.d("MercadoLivreAPI", "ImageURL encontrada: $imageUrl")
+                    val rawImageUrl = product.pictures[0].secure_url
+                    // Decodificar URL removendo caracteres de escape
+                    val imageUrl = rawImageUrl.replace("\\u002F", "/")
+                                              .replace("%2F", "/")
+                                              .replace("&amp;", "&")
+                    Log.d("MercadoLivreAPI", "ImageURL original: $rawImageUrl")
+                    Log.d("MercadoLivreAPI", "ImageURL decodificada: $imageUrl")
                     currentImageUrl = imageUrl
                     loadMediaPreview(imageUrl)
                 } else {
@@ -444,23 +449,41 @@ class MercadoLivre2Fragment : Fragment() {
                     * { margin: 0; padding: 0; box-sizing: border-box; }
                     html, body { 
                         width: 100%; height: 100%; 
-                        background: transparent; 
+                        background: #f0f0f0; 
                         overflow: hidden;
                     }
                     .media-container { 
                         width: 100%; height: 100%; 
                         display: flex; align-items: center; justify-content: center;
+                        background: white;
                     }
                     img { 
-                        width: 100%; height: 100%; 
-                        object-fit: cover;
+                        max-width: 100%; max-height: 100%; 
+                        object-fit: contain;
                         display: block;
                     }
+                    .error-msg {
+                        display: none;
+                        color: #666;
+                        text-align: center;
+                        font-family: Arial, sans-serif;
+                    }
                 </style>
+                <script>
+                    function imageError() {
+                        document.getElementById('image').style.display = 'none';
+                        document.getElementById('error').style.display = 'block';
+                        console.log('Erro ao carregar imagem: $mediaUrl');
+                    }
+                    function imageLoaded() {
+                        console.log('Imagem carregada com sucesso: $mediaUrl');
+                    }
+                </script>
             </head>
             <body>
                 <div class="media-container">
-                    <img src="$mediaUrl" onerror="this.style.display='none';">
+                    <img id="image" src="$mediaUrl" onload="imageLoaded()" onerror="imageError()">
+                    <div id="error" class="error-msg">Erro ao carregar imagem</div>
                 </div>
             </body>
             </html>
@@ -468,6 +491,9 @@ class MercadoLivre2Fragment : Fragment() {
         
         binding.mediaPreviewWebview.apply {
             settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.loadWithOverviewMode = true
+            settings.useWideViewPort = true
             loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
             visibility = View.VISIBLE
         }
@@ -518,25 +544,37 @@ class MercadoLivre2Fragment : Fragment() {
                 }
             }
             
-            // Extrair imagem
+            // Extrair imagem do produto em alta resolução da página do afiliado
             val imagePatterns = listOf(
-                Regex("src=\"([^\"]*pantene[^\"]*\\.jpg[^\"]*)\""),  // Imagem com pantene
-                Regex("data-src=\"([^\"]*\\.jpg[^\"]*)\""),  // data-src
-                Regex("\"image\":\"([^\"]*\\.jpg[^\"]*)\""),  // JSON image
-                Regex("background-image:\\s*url\\('([^']*\\.jpg[^']*)'\\)")
+                Regex("data-zoom=\"([^\"]*D_NQ_NP[^\"]*)\""),  // Imagem de zoom
+                Regex("\"image\":\"([^\"]*D_NQ_NP[^\"]*-F[^\"]*)\""),  // JSON image full size
+                Regex("src=\"([^\"]*D_NQ_NP[^\"]*-F[^\"]*)\""),  // Src full size
+                Regex("\"image\":\"([^\"]*D_Q_NP[^\"]*)\""),  // JSON image fallback
+                Regex("src=\"([^\"]*D_Q_NP[^\"]*)\"")  // Src fallback
             )
             
             var imageUrl: String? = null
             for (pattern in imagePatterns) {
                 val match = pattern.find(html)
                 if (match != null) {
-                    imageUrl = match.groupValues[1]
-                    if (imageUrl.contains("http")) break
+                    val candidateUrl = match.groupValues[1]
+                    // Filtrar banners e imagens irrelevantes
+                    if (candidateUrl.contains("http") && 
+                        !candidateUrl.contains("banner") && 
+                        !candidateUrl.contains("mshops-appearance") &&
+                        !candidateUrl.contains("ui-ms-profile")) {
+                        imageUrl = convertToHighResolution(candidateUrl)
+                        break
+                    }
                 }
             }
             
             val pictures = if (imageUrl != null) {
-                listOf(MercadoLivrePicture(imageUrl))
+                // Decodificar URL da imagem
+                val decodedImageUrl = imageUrl.replace("\\u002F", "/")
+                                              .replace("%2F", "/")
+                                              .replace("&amp;", "&")
+                listOf(MercadoLivrePicture(decodedImageUrl))
             } else null
             
             Log.d("MercadoLivreAPI", "Web scraping afiliado - Título: $title, Preço: $price, Imagem: $imageUrl")
@@ -607,25 +645,38 @@ class MercadoLivre2Fragment : Fragment() {
                 }
             }
             
-            // Extrair imagem - múltiplos padrões
+            // Extrair imagem do produto em alta resolução
             val imagePatterns = listOf(
-                Regex("\"secure_url\":\"([^\"]+)\""),  // JSON secure_url
-                Regex("\"url\":\"([^\"]*\\.jpg[^\"]*)\""),  // URL .jpg
-                Regex("data-src=\"([^\"]*\\.jpg[^\"]*)\""),  // data-src
-                Regex("src=\"([^\"]*\\.jpg[^\"]*)\"")  // src normal
+                Regex("\"secure_url\":\"([^\"]*D_NQ_NP[^\"]*-F[^\"]*)\""),  // Imagem full size (-F)
+                Regex("\"secure_url\":\"([^\"]*D_Q_NP[^\"]*-O[^\"]*)\""),  // Imagem original (-O)
+                Regex("data-zoom=\"([^\"]*D_NQ_NP[^\"]*)\""),  // Imagem de zoom
+                Regex("\"url\":\"([^\"]*D_NQ_NP[^\"]*-F[^\"]*)\""),  // URL full size
+                Regex("src=\"([^\"]*D_NQ_NP[^\"]*-F[^\"]*)\""),  // Src full size
+                Regex("\"secure_url\":\"([^\"]*D_Q_NP[^\"]*)\"")  // Fallback
             )
             
             var imageUrl: String? = null
             for (pattern in imagePatterns) {
                 val match = pattern.find(html)
                 if (match != null) {
-                    imageUrl = match.groupValues[1]
-                    if (imageUrl.contains("http")) break
+                    val candidateUrl = match.groupValues[1]
+                    // Filtrar banners e imagens irrelevantes
+                    if (candidateUrl.contains("http") && 
+                        !candidateUrl.contains("banner") && 
+                        !candidateUrl.contains("mshops-appearance") &&
+                        !candidateUrl.contains("ui-ms-profile")) {
+                        imageUrl = convertToHighResolution(candidateUrl)
+                        break
+                    }
                 }
             }
             
             val pictures = if (imageUrl != null) {
-                listOf(MercadoLivrePicture(imageUrl))
+                // Decodificar URL da imagem
+                val decodedImageUrl = imageUrl.replace("\\u002F", "/")
+                                              .replace("%2F", "/")
+                                              .replace("&amp;", "&")
+                listOf(MercadoLivrePicture(decodedImageUrl))
             } else null
             
             Log.d("MercadoLivreAPI", "Web scraping - Título: $title, Preço: $price, Imagem: $imageUrl")
@@ -643,6 +694,17 @@ class MercadoLivre2Fragment : Fragment() {
             Log.e("MercadoLivreAPI", "Erro no web scraping: ${e.message}")
             null
         }
+    }
+
+    private fun convertToHighResolution(imageUrl: String): String {
+        return imageUrl.replace("-R.webp", "-F.webp")
+                      .replace("-G.webp", "-F.webp")
+                      .replace("-S.webp", "-F.webp")
+                      .replace("-T.webp", "-F.webp")
+                      .replace("-R.jpg", "-F.jpg")
+                      .replace("-G.jpg", "-F.jpg")
+                      .replace("-S.jpg", "-F.jpg")
+                      .replace("-T.jpg", "-F.jpg")
     }
 
     private fun formatPrice(price: String): String {
