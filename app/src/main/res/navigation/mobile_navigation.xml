@@ -22,6 +22,12 @@
         <action
             android:id="@+id/action_navigation_home_to_instagramFragment"
             app:destination="@+id/instagramFragment" />
+        <action
+            android:id="@+id/action_navigation_home_to_mercadoLivreFragment"
+            app:destination="@+id/mercadoLivreFragment" />
+        <action
+            android:id="@+id/action_navigation_home_to_mercadoLivre2Fragment"
+            app:destination="@+id/mercadoLivre2Fragment" />
     </fragment>
 
     <fragment
@@ -47,6 +53,18 @@
         android:name="com.example.geradordeanncios.ui.instagram.InstagramFragment"
         android:label="Instagram"
         tools:layout="@layout/fragment_instagram" />
+
+    <fragment
+        android:id="@+id/mercadoLivreFragment"
+        android:name="com.example.geradordeanncios.ui.mercadolivre.MercadoLivreFragment"
+        android:label="Mercado Livre"
+        tools:layout="@layout/fragment_mercado_livre" />
+
+    <fragment
+        android:id="@+id/mercadoLivre2Fragment"
+        android:name="com.example.geradordeanncios.ui.mercadolivre2.MercadoLivre2Fragment"
+        android:label="Mercado Livre 2"
+        tools:layout="@layout/fragment_mercadolivre2" />
 
     <fragment
         android:id="@+id/navigation_dashboard"

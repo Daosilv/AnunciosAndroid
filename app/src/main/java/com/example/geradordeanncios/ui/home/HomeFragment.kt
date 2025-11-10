@@ -34,12 +34,20 @@ class HomeFragment : Fragment() {
             findNavController().navigate(R.id.action_navigation_home_to_telegramVideoFragment)
         }
 
+        binding.mercadoLivreCard.setOnClickListener {
+            findNavController().navigate(R.id.action_navigation_home_to_mercadoLivreFragment)
+        }
+
         binding.facebookCard.setOnClickListener {
             findNavController().navigate(R.id.action_navigation_home_to_facebookFormFragment)
         }
 
         binding.instagramCard.setOnClickListener {
             findNavController().navigate(R.id.action_navigation_home_to_instagramFragment)
+        }
+
+        binding.mercadoLivre2Card.setOnClickListener {
+            findNavController().navigate(R.id.action_navigation_home_to_mercadoLivre2Fragment)
         }
     }
 

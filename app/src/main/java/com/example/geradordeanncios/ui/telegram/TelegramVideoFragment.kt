@@ -126,7 +126,8 @@ class TelegramVideoFragment : Fragment() {
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
-            checkVideoSizeAndLoad(it)
+            currentVideoUri = it
+            loadVideoPreview(it)
         }
     }
 
@@ -449,50 +450,6 @@ class TelegramVideoFragment : Fragment() {
                 isFetching = false
             }
         }
-    }
-
-    private fun checkVideoSizeAndLoad(videoUri: Uri) {
-        try {
-            val cursor = requireContext().contentResolver.query(videoUri, null, null, null, null)
-            cursor?.use {
-                if (it.moveToFirst()) {
-                    val sizeIndex = it.getColumnIndex(android.provider.OpenableColumns.SIZE)
-                    if (sizeIndex != -1) {
-                        val sizeInBytes = it.getLong(sizeIndex)
-                        val sizeInMB = sizeInBytes / (1024.0 * 1024.0)
-                        
-                        if (sizeInMB > 3.0) {
-                            showVideoSizeDialog(videoUri, sizeInMB)
-                        } else {
-                            currentVideoUri = videoUri
-                            loadVideoPreview(videoUri)
-                        }
-                    } else {
-                        currentVideoUri = videoUri
-                        loadVideoPreview(videoUri)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("VideoSize", "Erro ao verificar tamanho do vídeo: ${e.message}")
-            currentVideoUri = videoUri
-            loadVideoPreview(videoUri)
-        }
-    }
-    
-    private fun showVideoSizeDialog(videoUri: Uri, sizeInMB: Double) {
-        val formattedSize = String.format("%.1f", sizeInMB)
-        AlertDialog.Builder(requireContext())
-            .setTitle("Vídeo Grande")
-            .setMessage("Este vídeo possui ${formattedSize}MB, deseja continuar?")
-            .setPositiveButton("Sim") { _, _ ->
-                currentVideoUri = videoUri
-                loadVideoPreview(videoUri)
-            }
-            .setNegativeButton("Não") { dialog, _ ->
-                dialog.dismiss()
-            }
-            .show()
     }
 
     private fun loadVideoPreview(videoUri: Uri) {
