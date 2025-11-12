@@ -35,7 +35,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="120dp"
                 android:gravity="center"
-                android:text="WhatsApp"
+                android:text="Anuncios com\nImagem"
                 android:textAppearance="@style/TextAppearance.MaterialComponents.Headline6" />
         </com.google.android.material.card.MaterialCardView>
 
@@ -51,7 +51,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="120dp"
                 android:gravity="center"
-                android:text="Vídeos do\nTelegram"
+                android:text="Anuncios com\nVideo"
                 android:textAppearance="@style/TextAppearance.MaterialComponents.Headline6" />
         </com.google.android.material.card.MaterialCardView>
 

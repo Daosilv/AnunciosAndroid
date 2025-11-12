@@ -911,13 +911,12 @@ class MercadoLivre2Fragment : Fragment() {
                 appendLine()
             }
             if (binding.couponLinkCheckbox.isChecked) {
-                appendLine("🎟️ Link de Cupons:")
-                appendLine(couponLink)
+                appendLine("Cupons: $couponLink")
+                appendLine("Os cupons de frete grátis aparecem na tela de pagamento")
                 appendLine()
             }
             if (binding.groupLinkCheckbox.isChecked) {
-                appendLine("📱 Link do Grupo:")
-                appendLine(groupLink)
+                appendLine("Indique o grupo para amigos: $groupLink")
                 appendLine()
             }
         }.trim()

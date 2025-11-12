@@ -235,15 +235,14 @@ class StoryFragment : Fragment() {
 
             // 7 - Link de Cupons
             if (binding.couponLinkCheckbox.isChecked) {
-                appendLine("🎟️ Link de Cupons:")
-                appendLine(couponLink)
+                appendLine("Cupons: $couponLink")
+                appendLine("Os cupons de frete grátis aparecem na tela de pagamento")
                 appendLine()
             }
 
             // 8 - Link do Grupo
             if (binding.groupLinkCheckbox.isChecked) {
-                appendLine("📱 Link do Grupo:")
-                appendLine(groupLink)
+                appendLine("Indique o grupo para amigos: $groupLink")
                 appendLine()
             }
         }.trim()

@@ -120,8 +120,7 @@ class PostFragment : Fragment() {
 
             // 6. Link do Grupo
             if (binding.groupLinkCheckbox.isChecked) {
-                appendLine("📱 Link do Grupo:")
-                appendLine(groupLink)
+                appendLine("Indique o grupo para amigos: $groupLink")
             }
         }.trim()
 

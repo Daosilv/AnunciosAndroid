@@ -39,7 +39,7 @@
     <fragment
         android:id="@+id/telegramVideoFragment"
         android:name="com.example.geradordeanncios.ui.telegram.TelegramVideoFragment"
-        android:label="Vídeos do Telegram"
+        android:label="Anuncios com Video"
         tools:layout="@layout/fragment_telegram_video" />
 
     <fragment
