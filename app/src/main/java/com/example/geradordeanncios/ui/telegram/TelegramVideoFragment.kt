@@ -577,7 +577,16 @@ class TelegramVideoFragment : Fragment() {
     }
     
     private fun copyAdToClipboard() {
-        copyAdWithVideo()
+        AlertDialog.Builder(requireContext())
+            .setTitle("Copiar Anúncio")
+            .setMessage("Como deseja copiar o anúncio?")
+            .setPositiveButton("Com Vídeo") { _, _ ->
+                copyAdWithVideo()
+            }
+            .setNegativeButton("Sem Vídeo") { _, _ ->
+                copyAdWithoutVideo()
+            }
+            .show()
     }
 
     private fun copyAdWithVideo() {
@@ -635,6 +644,19 @@ class TelegramVideoFragment : Fragment() {
                 }
                 appendLine()
             }
+            val shippingText = when (binding.shippingOptionsGroup.checkedRadioButtonId) {
+                R.id.free_shipping_radio -> "🚚 Frete Grátis!"
+                R.id.coupon_shipping_radio -> "🚚 Frete Grátis com Cupom!"
+                R.id.free_shipping_above_radio -> {
+                    val amount = binding.freeShippingAboveEditText.text.toString().trim()
+                    if (amount.isNotEmpty()) "🚚 Frete Grátis acima de R$ $amount" else ""
+                }
+                else -> ""
+            }
+            if (shippingText.isNotEmpty()) {
+                appendLine(shippingText)
+                appendLine()
+            }
             val purchaseLink = binding.associateLinkEditText.text.toString().trim()
             if (purchaseLink.isNotBlank()) {
                 appendLine("🛒 Link de Compra:")
@@ -661,11 +683,12 @@ class TelegramVideoFragment : Fragment() {
             return
         }
 
-        val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("Anúncio", adText)
-        clipboard.setPrimaryClip(clip)
-
-        Toast.makeText(requireContext(), "Anúncio copiado sem vídeo!", Toast.LENGTH_SHORT).show()
+        val shareIntent = Intent().apply {
+            action = Intent.ACTION_SEND
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, adText)
+        }
+        startActivity(Intent.createChooser(shareIntent, "Compartilhar anúncio sem vídeo"))
     }
 
     override fun onDestroyView() {
