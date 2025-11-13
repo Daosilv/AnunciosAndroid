@@ -69,7 +69,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="120dp"
                 android:gravity="center"
-                android:text="Mercado Livre 2"
+                android:text="Mercado Livre/\nAmazon"
                 android:textAppearance="@style/TextAppearance.MaterialComponents.Headline6" />
         </com.google.android.material.card.MaterialCardView>
 

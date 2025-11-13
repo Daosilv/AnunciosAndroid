@@ -63,7 +63,7 @@
     <fragment
         android:id="@+id/mercadoLivre2Fragment"
         android:name="com.example.geradordeanncios.ui.mercadolivre2.MercadoLivre2Fragment"
-        android:label="Mercado Livre 2"
+        android:label="Mercado Livre/Amazon"
         tools:layout="@layout/fragment_mercadolivre2" />
 
     <fragment
